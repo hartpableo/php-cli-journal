@@ -1,0 +1,11 @@
+{
+    "name": "hartpableo/php-cli-journal",
+    "type": "project",
+    "authors": [
+        {
+            "name": "hartpableo",
+            "email": "pableoh@gmail.com"
+        }
+    ],
+    "require": {}
+}
