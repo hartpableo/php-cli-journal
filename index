@@ -20,17 +20,34 @@ try {
     ): int {
       $io->title('PHP CLI JOURNAL');
 
-      $promptAction = function () use ($io): string {
-        $startChoices = [
+      $run = TRUE;
+      while ($run) {
+        $promptActionChoices = [
           'View all entries',
           'Create new entry',
+          'Exit',
         ];
-        $action = $io->choice('Get started', $startChoices, $startChoices[0]);
-        $io->text("You selected $action.");
-        return $action;
-      };
+        $action = $io->choice(
+          'Get started',
+          $promptActionChoices,
+          $promptActionChoices[0]
+        );
 
-      $promptAction();
+        switch ($action) {
+          case $promptActionChoices[0]:
+            $io->text("Show all entries.");
+            break;
+
+          case $promptActionChoices[1]:
+            $io->text("Create new entry.");
+            break;
+
+          case $promptActionChoices[2]:
+            $io->text("Good bye.");
+            $run = FALSE;
+            break;
+        }
+      }
 
       return Command::SUCCESS;
     })
