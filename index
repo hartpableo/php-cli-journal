@@ -1,11 +1,10 @@
 #!/usr/bin/env php
 <?php
 
-use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Exception\ExceptionInterface;
-use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 if (php_sapi_name() !== 'cli') {
   exit(1);
@@ -17,10 +16,16 @@ try {
   new SingleCommandApplication()
     ->setName('php-cli-journal')
     ->setCode(function (
-      #[Argument] string $username,
-      OutputInterface    $output
+      SymfonyStyle $io
     ): int {
-      $output->writeln(sprintf('<info>%s</info>', $username));
+      $io->title('PHP CLI JOURNAL');
+
+      $startChoices = [
+        'View all entries',
+        'Create new entry',
+      ];
+      $action = $io->choice('Get started', $startChoices, $startChoices[0]);
+      $io->text("You selected $action.");
       return Command::SUCCESS;
     })
     ->run();
