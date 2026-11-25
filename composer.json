@@ -7,5 +7,7 @@
             "email": "pableoh@gmail.com"
         }
     ],
-    "require": {}
+    "require": {
+        "symfony/console": "^8.1"
+    }
 }

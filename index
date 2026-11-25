@@ -1,8 +1,30 @@
 #!/usr/bin/env php
 <?php
 
+use Symfony\Component\Console\Attribute\Argument;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\ExceptionInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\SingleCommandApplication;
+
 if (php_sapi_name() !== 'cli') {
   exit(1);
 }
 
+require __DIR__ . '/vendor/autoload.php';
 
+try {
+  new SingleCommandApplication()
+    ->setName('php-cli-journal')
+    ->setCode(function (
+      #[Argument] string $username,
+      OutputInterface    $output
+    ): int {
+      $output->writeln(sprintf('<info>%s</info>', $username));
+      return Command::SUCCESS;
+    })
+    ->run();
+} catch (ExceptionInterface $e) {
+  echo $e->getMessage();
+  exit(1);
+}
