@@ -72,6 +72,9 @@ try {
                 ];
               }, array_values($entries))
             );
+
+            // @todo: actions: view an entry (enter entry ID to view), filter by id range or date range
+            // @todo: actions: edit, delete, back to index, back to home
             break;
 
           case $promptActionChoices[1]:
