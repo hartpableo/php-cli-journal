@@ -3,6 +3,7 @@
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Exception\ExceptionInterface;
+use Symfony\Component\Console\Question\Question;
 use Symfony\Component\Console\SingleCommandApplication;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
@@ -66,11 +67,44 @@ try {
                 return [$entry['id'], $entry['content'], $entry['created_at']];
               }, array_values($entries))
             );
-
             break;
 
           case $promptActionChoices[1]:
-            $io->block(["Create new entry.", "hello", "world"], 'HEY', 'fg=yellow', '|| ', true);
+            $io->section("Create New Entry");
+
+            $entryBodyIsValid = FALSE;
+            $question = new Question('Write your entry:');
+            $question->setMultiline(TRUE);
+            while (!$entryBodyIsValid) {
+              $entryBody = $io->askQuestion($question);
+
+              if (empty($entryBody)) {
+                $io->error('Empty entry. Try again.');
+              }
+              else {
+                // Save to db
+                $stmt = $db->prepare("
+                  INSERT INTO entry (content, created_at)
+                  VALUES (:content, :created_at)
+                ");
+                $inserted = $stmt->execute([
+                  'content' => trim(htmlspecialchars($entryBody)),
+                  'created_at' => new DateTimeImmutable(
+                    'now',
+                    new DateTimeZone('UTC')
+                  )->format('Y-m-d H:i:s'),
+                ]);
+
+                if ($inserted) {
+                  $io->error('Something went wrong with saving your entry. Please try again!');
+                }
+                else {
+                  $io->success("Entry saved!");
+                  $io->text(trim(substr($entryBody, 0, 15)) . '...');
+                  $entryBodyIsValid = TRUE;
+                }
+              }
+            }
             break;
 
           case $promptActionChoices[2]:
