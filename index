@@ -50,11 +50,27 @@ try {
 
         switch ($action) {
           case $promptActionChoices[0]:
-            $io->text("Show all entries.");
+            $io->section("All Entries");
+
+            $entries = $db->query("SELECT * FROM entry")->fetchAll();
+
+            if (empty($entries)) {
+              $io->comment("No entries yet...");
+              break;
+            }
+
+            $io->text("Total: {$totalEntries}");
+            $io->table(
+              ['ID', 'Content', 'Created at'],
+              array_map(function (array $entry) {
+                return [$entry['id'], $entry['content'], $entry['created_at']];
+              }, array_values($entries))
+            );
+
             break;
 
           case $promptActionChoices[1]:
-            $io->text("Create new entry.");
+            $io->block(["Create new entry.", "hello", "world"], 'HEY', 'fg=yellow', '|| ', true);
             break;
 
           case $promptActionChoices[2]:
