@@ -3,15 +3,16 @@
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Exception\ExceptionInterface;
-use Symfony\Component\Console\Question\Question;
 use Symfony\Component\Console\SingleCommandApplication;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Process\Process;
 
 if (php_sapi_name() !== 'cli') {
   exit(1);
 }
 
-require __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/env.php';
 
 try {
   new SingleCommandApplication()
@@ -44,7 +45,7 @@ try {
           'Exit',
         ];
         $action = $io->choice(
-          'Get started',
+          'What do you want to do?',
           $promptActionChoices,
           $promptActionChoices[0]
         );
@@ -64,7 +65,11 @@ try {
             $io->table(
               ['ID', 'Content', 'Created at'],
               array_map(function (array $entry) {
-                return [$entry['id'], $entry['content'], $entry['created_at']];
+                return [
+                  $entry['id'],
+                  substr($entry['content'], 0, 25) . '...',
+                  convertToMyTimezone($entry['created_at'])
+                ];
               }, array_values($entries))
             );
             break;
@@ -72,37 +77,41 @@ try {
           case $promptActionChoices[1]:
             $io->section("Create New Entry");
 
-            $entryBodyIsValid = FALSE;
-            $question = new Question('Write your entry:');
-            $question->setMultiline(TRUE);
-            while (!$entryBodyIsValid) {
-              $entryBody = $io->askQuestion($question);
+            $tmpFile = tempnam(sys_get_temp_dir(), 'journal_entry_');
+            $editor = PHP_OS_FAMILY === 'Windows' ? 'notepad' : 'nano';
 
-              if (empty($entryBody)) {
-                $io->error('Empty entry. Try again.');
-              }
-              else {
-                // Save to db
-                $stmt = $db->prepare("
+            // Launch the editor and attach it to the terminal's TTY
+            $process = new Process([$editor, $tmpFile]);
+            $process->setTty(Process::isTtySupported());
+            $process->mustRun();
+
+            $entryBody = file_get_contents($tmpFile);
+            unlink($tmpFile);
+            $entryBody = trim(htmlspecialchars($entryBody));
+
+            if (!empty($entryBody)) {
+              $stmt = $db->prepare("
                   INSERT INTO entry (content, created_at)
                   VALUES (:content, :created_at)
                 ");
-                $inserted = $stmt->execute([
-                  'content' => trim(htmlspecialchars($entryBody)),
-                  'created_at' => new DateTimeImmutable(
-                    'now',
-                    new DateTimeZone('UTC')
-                  )->format('Y-m-d H:i:s'),
-                ]);
+              $dtNow = new DateTimeImmutable(
+                'now',
+                new DateTimeZone('UTC')
+              )->format('Y-m-d H:i:s');
+              $inserted = $stmt->execute([
+                'content' => $entryBody,
+                'created_at' => $dtNow,
+              ]);
 
-                if ($inserted) {
-                  $io->error('Something went wrong with saving your entry. Please try again!');
-                }
-                else {
-                  $io->success("Entry saved!");
-                  $io->text(trim(substr($entryBody, 0, 15)) . '...');
-                  $entryBodyIsValid = TRUE;
-                }
+              if (!$inserted) {
+                $io->error('Something went wrong with saving your entry. Please try again!');
+              }
+              else {
+                $io->success(sprintf(
+                  "Entry saved at %s!",
+                  convertToMyTimezone($dtNow)
+                ));
+                $io->text(trim(substr($entryBody, 0, 15)) . '...');
               }
             }
             break;
@@ -120,4 +129,15 @@ try {
 } catch (ExceptionInterface $e) {
   echo $e->getMessage();
   exit(1);
+}
+
+
+// Convert to desired timezone
+function convertToMyTimezone(
+  string $time,
+  string $format = 'Y-m-d H:i:s'
+): string {
+  $date = DateTime::createFromFormat($format, $time, new DateTimeZone('UTC'));
+  $date->setTimezone(new DateTimeZone(MY_TZ));
+  return $date->format('Y-m-d g:i A (e)');
 }
