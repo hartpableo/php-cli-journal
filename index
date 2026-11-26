@@ -15,10 +15,25 @@ require __DIR__ . '/vendor/autoload.php';
 try {
   new SingleCommandApplication()
     ->setName('php-cli-journal')
-    ->setCode(function (
-      SymfonyStyle $io
-    ): int {
+    ->setCode(function (SymfonyStyle $io): int {
+      // Connect to SQLite DB
+      $db = new PDO('sqlite:' . __DIR__ . '/db/journal.db');
+      $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+      $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
+      // Create "entry" table if not yet exists
+      $db->exec("
+        CREATE TABLE IF NOT EXISTS entry (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          content TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      ");
+
       $io->title('PHP CLI JOURNAL');
+
+      $totalEntries = $db->query("SELECT COUNT(*) FROM entry")->fetchColumn();
+      $io->writeln('Total entries: ' . $totalEntries);
 
       $run = TRUE;
       while ($run) {

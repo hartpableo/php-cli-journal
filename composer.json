@@ -1,14 +1,15 @@
 {
-    "name": "hartpableo/php-cli-journal",
-    "type": "project",
-    "authors": [
-        {
-            "name": "hartpableo",
-            "email": "pableoh@gmail.com"
-        }
-    ],
-    "require": {
-        "symfony/console": "^8.1",
-        "ext-pdo_sqlite": "*"
+  "name": "hartpableo/php-cli-journal",
+  "type": "project",
+  "authors": [
+    {
+      "name": "hartpableo",
+      "email": "pableoh@gmail.com"
     }
+  ],
+  "require": {
+    "symfony/console": "^8.1",
+    "ext-pdo_sqlite": "*",
+    "ext-pdo": "*"
+  }
 }
