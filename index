@@ -14,6 +14,19 @@ if (php_sapi_name() !== 'cli') {
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/env.php';
 
+const BASE_ACTION_CHOICES = [
+  'View all entries',
+  'Create new entry',
+  'Exit',
+];
+
+const INDEX_ACTION_CHOICES = [
+  'View an entry (enter ID)',
+  'Create new entry',
+  'Filter entries',
+  'Back',
+];
+
 try {
   new SingleCommandApplication()
     ->setName('php-cli-journal')
@@ -28,7 +41,8 @@ try {
         CREATE TABLE IF NOT EXISTS entry (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           content TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       ");
 
@@ -39,19 +53,14 @@ try {
 
       $run = TRUE;
       while ($run) {
-        $promptActionChoices = [
-          'View all entries',
-          'Create new entry',
-          'Exit',
-        ];
         $action = $io->choice(
           'What do you want to do?',
-          $promptActionChoices,
-          $promptActionChoices[0]
+          BASE_ACTION_CHOICES,
+          BASE_ACTION_CHOICES[0]
         );
 
         switch ($action) {
-          case $promptActionChoices[0]:
+          case BASE_ACTION_CHOICES[0]:
             $io->section("All Entries");
 
             $entries = $db->query("SELECT * FROM entry")->fetchAll();
@@ -73,11 +82,46 @@ try {
               }, array_values($entries))
             );
 
-            // @todo: actions: view an entry (enter entry ID to view), filter by id range or date range
-            // @todo: actions: edit, delete, back to index, back to home
+            // Actions: view an entry (enter entry ID to view), filter by id range or date range
+            $runIndex = TRUE;
+            while ($runIndex) {
+              $indexAction = $io->choice(
+                'What do you want to do?',
+                INDEX_ACTION_CHOICES,
+                INDEX_ACTION_CHOICES[0]
+              );
+
+              switch ($indexAction) {
+                case INDEX_ACTION_CHOICES[0]:
+                  $id = $io->ask('Enter entry ID');
+                  $entry = $db->query("SELECT * FROM entry WHERE id = {$id}")->fetch();
+                  if (empty($entry)) {
+                    $io->error('Entry not found.');
+                  }
+                  else {
+                    $io->title("Entry {$entry['id']}");
+                    $io->text(sprintf(
+                      'Created at: %s',
+                      convertToMyTimezone($entry['created_at'])
+                    ));
+                    $io->text(sprintf(
+                      'Last modified: %s',
+                      convertToMyTimezone($entry['updated_at'])
+                    ));
+                    $io->block(htmlspecialchars_decode($entry['content']));
+                    // @todo: actions: edit, delete, back to index, back to home
+                  }
+                  break;
+
+                case INDEX_ACTION_CHOICES[3]:
+                  $runIndex = FALSE;
+                  break;
+              }
+            }
+            // @todo: support pagination (10 per page)
             break;
 
-          case $promptActionChoices[1]:
+          case BASE_ACTION_CHOICES[1]:
             $io->section("Create New Entry");
 
             $tmpFile = tempnam(sys_get_temp_dir(), 'journal_entry_');
@@ -119,7 +163,7 @@ try {
             }
             break;
 
-          case $promptActionChoices[2]:
+          case BASE_ACTION_CHOICES[2]:
             $io->text("Good bye.");
             $run = FALSE;
             break;
