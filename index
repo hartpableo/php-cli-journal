@@ -27,6 +27,13 @@ const INDEX_ACTION_CHOICES = [
   'Back',
 ];
 
+const SINGLE_ENTRY_ACTIONS = [
+  'Edit this entry',
+  'Delete this entry',
+  'Back to entries index',
+  'Back to home'
+];
+
 try {
   new SingleCommandApplication()
     ->setName('php-cli-journal')
@@ -83,8 +90,8 @@ try {
             );
 
             // Actions: view an entry (enter entry ID to view), filter by id range or date range
-            $runIndex = TRUE;
-            while ($runIndex) {
+            $runEntriesIndexPrompt = TRUE;
+            while ($runEntriesIndexPrompt) {
               $indexAction = $io->choice(
                 'What do you want to do?',
                 INDEX_ACTION_CHOICES,
@@ -99,22 +106,81 @@ try {
                     $io->error('Entry not found.');
                   }
                   else {
-                    $io->title("Entry {$entry['id']}");
-                    $io->text(sprintf(
-                      'Created at: %s',
-                      convertToMyTimezone($entry['created_at'])
-                    ));
-                    $io->text(sprintf(
-                      'Last modified: %s',
-                      convertToMyTimezone($entry['updated_at'])
-                    ));
-                    $io->block(htmlspecialchars_decode($entry['content']));
-                    // @todo: actions: edit, delete, back to index, back to home
+                    // Actions: edit, delete, back to index, back to home
+                    $runSingleEntryPrompt = TRUE;
+                    while ($runSingleEntryPrompt) {
+                      $io->title("Entry {$entry['id']}");
+                      $io->text(sprintf(
+                        'Created at: %s',
+                        convertToMyTimezone($entry['created_at'])
+                      ));
+                      $io->text(sprintf(
+                        'Last modified: %s',
+                        convertToMyTimezone($entry['updated_at'])
+                      ));
+                      $io->block(htmlspecialchars_decode($entry['content']));
+
+                      $singleEntryPromptAction = $io->choice(
+                        'What do you want to do?',
+                        INDEX_ACTION_CHOICES,
+                        INDEX_ACTION_CHOICES[0]
+                      );
+
+                      switch ($singleEntryPromptAction) {
+                        case INDEX_ACTION_CHOICES[0]:
+                          $io->section("Now editing entry {$entry['id']}");
+                          $newContent = entryText($entry['content']);
+                          if ($newContent !== $entry['content']) {
+                            $updated = $db
+                              ->prepare("UPDATE entry SET content = :content, updated_at = :updated_at WHERE id = :id")
+                              ->execute([
+                                ':content' => $newContent,
+                                ':id' => $entry['id'],
+                                ':updated_at' => new DateTimeImmutable(
+                                  'now',
+                                  new DateTimeZone('UTC')
+                                )->format('Y-m-d H:i:s')
+                              ]);
+
+                            if (!$updated) {
+                              $io->error('Entry was not updated.');
+                            }
+                            else {
+                              $io->success('Entry has been updated.');
+                            }
+                          }
+                          break;
+
+                        case INDEX_ACTION_CHOICES[1]:
+                          if ($io->confirm("Are you sure you want to delete this entry?")) {
+                            $deleted = $db
+                              ->prepare("DELETE FROM entry WHERE id = :id")
+                              ->execute(['id' => $entry['id']]);
+                            if ($deleted) {
+                              $io->info("Entry {$entry['id']} deleted.");
+                              $runSingleEntryPrompt = FALSE;
+                            }
+                            else {
+                              $io->info('Entry was not deleted.');
+                            }
+                          }
+                          break;
+
+                        case INDEX_ACTION_CHOICES[2]:
+                          $runSingleEntryPrompt = FALSE;
+                          break;
+
+                        case INDEX_ACTION_CHOICES[3]:
+                          $runSingleEntryPrompt = FALSE;
+                          $runEntriesIndexPrompt = FALSE;
+                          break;
+                      }
+                    }
                   }
                   break;
 
                 case INDEX_ACTION_CHOICES[3]:
-                  $runIndex = FALSE;
+                  $runEntriesIndexPrompt = FALSE;
                   break;
               }
             }
@@ -124,17 +190,7 @@ try {
           case BASE_ACTION_CHOICES[1]:
             $io->section("Create New Entry");
 
-            $tmpFile = tempnam(sys_get_temp_dir(), 'journal_entry_');
-            $editor = PHP_OS_FAMILY === 'Windows' ? 'notepad' : 'nano';
-
-            // Launch the editor and attach it to the terminal's TTY
-            $process = new Process([$editor, $tmpFile]);
-            $process->setTty(Process::isTtySupported());
-            $process->mustRun();
-
-            $entryBody = file_get_contents($tmpFile);
-            unlink($tmpFile);
-            $entryBody = trim(htmlspecialchars($entryBody));
+            $entryBody = entryText();
 
             if (!empty($entryBody)) {
               $stmt = $db->prepare("
@@ -187,4 +243,25 @@ function convertToMyTimezone(
   $date = DateTime::createFromFormat($format, $time, new DateTimeZone('UTC'));
   $date->setTimezone(new DateTimeZone(MY_TZ));
   return $date->format('Y-m-d g:i A (e)');
+}
+
+// Text editor
+function entryText($default = ""): FALSE|string {
+  $tmpFile = tempnam(sys_get_temp_dir(), 'journal_entry_');
+
+  if ($default !== '') {
+    file_put_contents($tmpFile, htmlspecialchars_decode($default));
+  }
+
+  $editor = PHP_OS_FAMILY === 'Windows' ? 'notepad' : 'nano';
+
+  // Launch the editor and attach it to the terminal's TTY
+  $process = new Process([$editor, $tmpFile]);
+  $process->setTty(Process::isTtySupported());
+  $process->mustRun();
+
+  $content = file_get_contents($tmpFile);
+  unlink($tmpFile);
+
+  return trim(htmlspecialchars($content));
 }
