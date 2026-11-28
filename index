@@ -172,6 +172,10 @@ try {
                   }
                   break;
 
+                case INDEX_ACTION_CHOICES[1]:
+                  showCreateEntry($io, $db);
+                  break;
+
                 case INDEX_ACTION_CHOICES[3]:
                   $runEntriesIndexPrompt = FALSE;
                   break;
@@ -181,36 +185,7 @@ try {
             break;
 
           case BASE_ACTION_CHOICES[1]:
-            // @todo: fix - text editor not showing
-            $io->section("Create New Entry");
-
-            $entryBody = entryText();
-
-            if (!empty($entryBody)) {
-              $stmt = $db->prepare("
-                  INSERT INTO entry (content, created_at)
-                  VALUES (:content, :created_at)
-                ");
-              $dtNow = new DateTimeImmutable(
-                'now',
-                new DateTimeZone('UTC')
-              )->format('Y-m-d H:i:s');
-              $inserted = $stmt->execute([
-                'content' => $entryBody,
-                'created_at' => $dtNow,
-              ]);
-
-              if (!$inserted) {
-                $io->error('Something went wrong with saving your entry. Please try again!');
-              }
-              else {
-                $io->success(sprintf(
-                  "Entry saved at %s!",
-                  convertToMyTimezone($dtNow)
-                ));
-                $io->text(trim(substr($entryBody, 0, 15)) . '...');
-              }
-            }
+            showCreateEntry($io, $db);
             break;
 
           case BASE_ACTION_CHOICES[2]:
@@ -274,4 +249,39 @@ function showSingleEntry(SymfonyStyle $io, array $entry = []): void {
     convertToMyTimezone($entry['updated_at'])
   ));
   $io->block(htmlspecialchars_decode($entry['content']));
+}
+
+/**
+ * @throws DateMalformedStringException
+ */
+function showCreateEntry(SymfonyStyle $io, PDO $db): void {
+  $io->section("Create New Entry");
+
+  $entryBody = entryText();
+
+  if (!empty($entryBody)) {
+    $stmt = $db->prepare("
+                  INSERT INTO entry (content, created_at)
+                  VALUES (:content, :created_at)
+                ");
+    $dtNow = new DateTimeImmutable(
+      'now',
+      new DateTimeZone('UTC')
+    )->format('Y-m-d H:i:s');
+    $inserted = $stmt->execute([
+      'content' => $entryBody,
+      'created_at' => $dtNow,
+    ]);
+
+    if (!$inserted) {
+      $io->error('Something went wrong with saving your entry. Please try again!');
+    }
+    else {
+      $io->success(sprintf(
+        "Entry saved at %s!",
+        convertToMyTimezone($dtNow)
+      ));
+      $io->text(trim(substr($entryBody, 0, 15)) . '...');
+    }
+  }
 }
