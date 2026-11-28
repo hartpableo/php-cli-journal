@@ -20,6 +20,7 @@ const BASE_ACTION_CHOICES = [
   'Exit',
 ];
 
+// @todo: support "Navigate through entries"
 const INDEX_ACTION_CHOICES = [
   'View an entry (enter ID)',
   'Create new entry',
@@ -80,17 +81,56 @@ try {
                 break;
               }
 
-              $io->text("Total: {$totalEntries}");
-              $io->table(
-                ['ID', 'Content', 'Created at'],
-                array_map(function (array $entry) {
-                  return [
-                    $entry['id'],
-                    substr($entry['content'], 0, 25) . '...',
-                    convertToMyTimezone($entry['created_at'])
-                  ];
-                }, array_values($entries))
-              );
+              // Pagination
+              $pages = array_chunk($entries, 15);
+              $currentPage = 0;
+              $totalPages = count($pages);
+
+              while (TRUE) {
+                $io->text("Total: {$totalEntries}");
+                $io->text("Page " . $currentPage + 1);
+                $io->table(
+                  ['ID', 'Content', 'Last Modified'],
+                  array_map(function (array $entry) {
+                    return [
+                      $entry['id'],
+                      substr($entry['content'], 0, 25) . '...',
+//                      convertToMyTimezone($entry['created_at']),
+                      convertToMyTimezone($entry['updated_at'])
+                    ];
+                  }, array_values($pages[$currentPage]))
+                );
+
+                if ($totalPages <= 1) {
+                  break;
+                }
+
+                // Build dynamic navigation choices
+                $choices = [];
+                if ($currentPage < $totalPages - 1) {
+                  $choices['n'] = 'Next';
+                }
+                if ($currentPage > 0) {
+                  $choices['p'] = 'Previous';
+                }
+                $choices['q'] = 'Quit';
+
+                $pagerAction = $io->choice(
+                  'Navigation',
+                  $choices,
+                  array_key_first($choices)
+                );
+
+                if ($pagerAction === 'n') {
+                  $currentPage++;
+                }
+                elseif ($pagerAction === 'p') {
+                  $currentPage--;
+                }
+                else {
+                  break;
+                }
+              }
 
               $indexAction = $io->choice(
                 'What do you want to do?',
@@ -181,7 +221,6 @@ try {
                   break;
               }
             }
-            // @todo: support pagination (10 per page)
             break;
 
           case BASE_ACTION_CHOICES[1]:
@@ -213,7 +252,7 @@ function convertToMyTimezone(
   return $date->format('Y-m-d g:i A (e)');
 }
 
-function entryText($default = ""): FALSE|string {
+function entryText($default = ""): false|string {
   $tmpFile = tempnam(sys_get_temp_dir(), 'journal_entry_');
 
   if ($default !== '') {
