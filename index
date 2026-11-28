@@ -20,7 +20,7 @@ const BASE_ACTION_CHOICES = [
   'Exit',
 ];
 
-// @todo: support "Navigate through entries"
+// @todo: support "Navigate through entries (Pagination)"
 const INDEX_ACTION_CHOICES = [
   'View an entry (enter ID)',
   'Create new entry',
@@ -33,6 +33,11 @@ const SINGLE_ENTRY_ACTIONS = [
   'Delete this entry',
   'Back to entries index',
   'Back to home'
+];
+
+const ENTRIES_FILTER_OPTIONS = [
+  'Date Range (dd-mm-yyyy)',
+  'Keyword'
 ];
 
 try {
@@ -56,8 +61,8 @@ try {
 
       $io->title('PHP CLI JOURNAL');
 
-      $totalEntries = $db->query("SELECT COUNT(*) FROM entry")->fetchColumn();
-      $io->writeln('Total entries: ' . $totalEntries);
+//      $totalEntries = $db->query("SELECT COUNT(*) FROM entry")->fetchColumn();
+//      $io->writeln('Total entries: ' . $totalEntries);
 
       $run = TRUE;
       while ($run) {
@@ -71,74 +76,43 @@ try {
           case BASE_ACTION_CHOICES[0]:
             // Actions: view an entry (enter entry ID to view), filter by id range or date range
             $runEntriesIndexPrompt = TRUE;
+            $entries = [];
+            $isFiltered = FALSE;
+
             while ($runEntriesIndexPrompt) {
               $io->section("All Entries");
 
-              $entries = $db->query("SELECT * FROM entry")->fetchAll();
+              if (!$isFiltered) {
+                $entries = $db->query("SELECT * FROM entry")->fetchAll();
+              }
 
               if (empty($entries)) {
                 $io->comment("No entries yet...");
+                if ($isFiltered) {
+                  $isFiltered = FALSE;
+                }
                 break;
               }
 
-              // Pagination
-              $pages = array_chunk($entries, 15);
-              $currentPage = 0;
-              $totalPages = count($pages);
+              entriesTable($io, $entries);
 
-              while (TRUE) {
-                $io->text("Total: {$totalEntries}");
-                $io->text("Page " . $currentPage + 1);
-                $io->table(
-                  ['ID', 'Content', 'Last Modified'],
-                  array_map(function (array $entry) {
-                    return [
-                      $entry['id'],
-                      substr($entry['content'], 0, 25) . '...',
-//                      convertToMyTimezone($entry['created_at']),
-                      convertToMyTimezone($entry['updated_at'])
-                    ];
-                  }, array_values($pages[$currentPage]))
-                );
-
-                if ($totalPages <= 1) {
-                  break;
-                }
-
-                // Build dynamic navigation choices
-                $choices = [];
-                if ($currentPage < $totalPages - 1) {
-                  $choices['n'] = 'Next';
-                }
-                if ($currentPage > 0) {
-                  $choices['p'] = 'Previous';
-                }
-                $choices['q'] = 'Quit';
-
-                $pagerAction = $io->choice(
-                  'Navigation',
-                  $choices,
-                  array_key_first($choices)
-                );
-
-                if ($pagerAction === 'n') {
-                  $currentPage++;
-                }
-                elseif ($pagerAction === 'p') {
-                  $currentPage--;
-                }
-                else {
-                  break;
-                }
+              // Add "Clear filter" option if filtering is active
+              $indexActionChoices = INDEX_ACTION_CHOICES;
+              if ($isFiltered) {
+                array_splice($indexActionChoices, 3, 0, ['Clear filter']);
               }
-
               $indexAction = $io->choice(
                 'What do you want to do?',
-                INDEX_ACTION_CHOICES,
-                INDEX_ACTION_CHOICES[0]
+                $indexActionChoices,
+                $indexActionChoices[0]
               );
 
               switch ($indexAction) {
+                case 'Clear filter':
+                  $io->info('Filters cleared...');
+                  $isFiltered = FALSE;
+                  break;
+
                 case INDEX_ACTION_CHOICES[0]:
                   $id = $io->ask('Enter entry ID');
                   $entry = $db->query("SELECT * FROM entry WHERE id = {$id}")->fetch();
@@ -216,7 +190,65 @@ try {
                   showCreateEntry($io, $db);
                   break;
 
-                case INDEX_ACTION_CHOICES[3]:
+                case INDEX_ACTION_CHOICES[2]:
+                  $filterBy = $io->choice(
+                    'Filter by:',
+                    ENTRIES_FILTER_OPTIONS,
+                    ENTRIES_FILTER_OPTIONS[0]
+                  );
+
+                  switch ($filterBy) {
+                    case ENTRIES_FILTER_OPTIONS[0]:
+                      $startDateInput = $io->ask('Input start date (Format: dd-mm-yyyy)');
+                      if (empty($startDateInput)) {
+                        $io->error('Start date is required.');
+                      }
+                      elseif (!isValidDate($startDateInput)) {
+                        $io->error('Start date is invalid.');
+                      }
+                      else {
+                        $startDate = DateTimeImmutable::createFromFormat(
+                          'd-m-Y',
+                          $startDateInput,
+                          new DateTimeZone('UTC')
+                        )->format('Y-m-d 00:00:00');
+
+                        $endDateInput = $io->ask('Input end date (Format: dd-mm-yyyy). Leave blank for single-date filter.');
+
+                        // Query db
+                        if (empty($endDateInput)) {
+                          // Set end date to end of start day
+                          $endDate = DateTimeImmutable::createFromFormat(
+                            'd-m-Y',
+                            $startDateInput,
+                            new DateTimeZone('UTC')
+                          )->format('Y-m-d 23:59:59');
+                        }
+                        else {
+                          $endDate = DateTimeImmutable::createFromFormat(
+                            'd-m-Y',
+                            $endDateInput,
+                            new DateTimeZone('UTC')
+                          )->format('Y-m-d 23:59:59');
+                        }
+                        $stmt = $db->prepare("SELECT * FROM entry WHERE updated_at >= :startDate AND updated_at <= :endDate");
+                        $stmt->execute([
+                          ':startDate' => $startDate,
+                          ':endDate' => $endDate,
+                        ]);
+                        $entries = $stmt->fetchAll();
+                        $isFiltered = TRUE;
+                      }
+                      break;
+
+                    case ENTRIES_FILTER_OPTIONS[1]:
+                      $io->info('Keyword filter coming soon...');
+                      break;
+                  }
+                  break;
+
+                case 'Back':
+                  $isFiltered = FALSE;
                   $runEntriesIndexPrompt = FALSE;
                   break;
               }
@@ -317,10 +349,67 @@ function showCreateEntry(SymfonyStyle $io, PDO $db): void {
     }
     else {
       $io->success(sprintf(
-        "Entry saved at %s!",
+        "Entry saved - %s!",
         convertToMyTimezone($dtNow)
       ));
       $io->text(trim(substr($entryBody, 0, 15)) . '...');
+    }
+  }
+}
+
+function isValidDate(string $date, string $format = 'd-m-Y'): bool {
+  $dt = DateTime::createFromFormat($format, $date);
+  return $dt !== FALSE && $dt->format($format) === $date;
+}
+
+function entriesTable(SymfonyStyle $io, array $entries = []): void {
+  // Pagination
+  $pages = array_chunk($entries, 15);
+  $currentPage = 0;
+  $totalPages = count($pages);
+
+  while (TRUE) {
+    $io->text("Total: " . count($entries));
+    $io->text("Page " . $currentPage + 1);
+    $io->table(
+      ['ID', 'Content', 'Last Modified'],
+      array_map(function (array $entry) {
+        return [
+          $entry['id'],
+          substr($entry['content'], 0, 25) . '...',
+          convertToMyTimezone($entry['updated_at'])
+        ];
+      }, array_values($pages[$currentPage]))
+    );
+
+    if ($totalPages <= 1) {
+      break;
+    }
+
+    // Build dynamic navigation choices
+    $choices = [];
+    if ($currentPage < $totalPages - 1) {
+      $choices['n'] = 'Next';
+    }
+    if ($currentPage > 0) {
+      $choices['p'] = 'Previous';
+    }
+    $choices['q'] = 'Close navigation';
+
+    $pagerAction = $io->choice(
+      'Navigation',
+      $choices,
+      array_key_first($choices)
+    );
+
+    if ($pagerAction === 'n') {
+      $currentPage++;
+    }
+    elseif ($pagerAction === 'p') {
+      $currentPage--;
+    }
+    else {
+      break;
     }
   }
 }
